@@ -78,9 +78,17 @@ set of valid values for each field (`minute`, `hour`, `day`, `month`,
 - `7` as an alias for Sunday in the weekday field, alongside `0`
 - day-of-month/day-of-week combine with cron's traditional OR rule: if
   both fields are restricted, a match on either is enough
+- macros: `@yearly`/`@annually`, `@monthly`, `@weekly`, `@daily`/`@midnight`,
+  `@hourly`
 
-Not yet supported: `@daily`/`@hourly` style macros, a seconds field, and
-`?`/`L`/`W` (Quartz-style) extensions.
+```pycon
+>>> parse("@hourly").minute
+frozenset({0})
+```
+
+`@reboot` isn't supported since it has no time-based schedule to expand to.
+
+Not yet supported: a seconds field and `?`/`L`/`W` (Quartz-style) extensions.
 
 ## Status
 

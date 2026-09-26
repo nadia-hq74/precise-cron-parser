@@ -1,4 +1,5 @@
-"""Parsing for standard 5-field cron expressions (minute hour day month weekday).
+"""Parsing for standard 5-field cron expressions (minute hour day month weekday),
+plus the usual @daily/@hourly style shorthand.
 
 The point of this module is not just "does this string parse" but "if it
 doesn't, exactly where and why". Every error carries a line and column so
@@ -22,6 +23,18 @@ _MONTH_NAMES = {
 }
 _WEEKDAY_NAMES = {
     name: index for index, name in enumerate(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"])
+}
+
+# Standard cron shorthand. @reboot is deliberately left out: it isn't a time
+# based schedule and doesn't fit CronSchedule.matches().
+_MACROS = {
+    "@yearly": "0 0 1 1 *",
+    "@annually": "0 0 1 1 *",
+    "@monthly": "0 0 1 * *",
+    "@weekly": "0 0 * * 0",
+    "@daily": "0 0 * * *",
+    "@midnight": "0 0 * * *",
+    "@hourly": "0 * * * *",
 }
 
 
@@ -83,6 +96,38 @@ def parse_many(text: str) -> List[CronSchedule]:
     return schedules
 
 
+def _parse_macro(fields: List[Tuple[str, int]], text: str, line_no: int) -> CronSchedule:
+    token, col_offset = fields[0]
+
+    if len(fields) > 1:
+        _, extra_col = fields[1]
+        raise CronSyntaxError(
+            f"macro {token!r} does not take additional fields, found {len(fields) - 1} extra",
+            line_no,
+            extra_col + 1,
+            text,
+        )
+
+    expansion = _MACROS.get(token.lower())
+    if expansion is None:
+        raise CronSyntaxError(
+            f"unknown macro {token!r} (expected one of {', '.join(sorted(_MACROS))})",
+            line_no,
+            col_offset + 1,
+            text,
+        )
+
+    expanded = _parse_line(expansion, line_no)
+    return CronSchedule(
+        minute=expanded.minute,
+        hour=expanded.hour,
+        day=expanded.day,
+        month=expanded.month,
+        weekday=expanded.weekday,
+        expression=text.strip(),
+    )
+
+
 def _split_fields(text: str) -> List[Tuple[str, int]]:
     fields = []
     i = 0
@@ -112,6 +157,9 @@ def _split_commas(raw: str) -> List[Tuple[str, int]]:
 
 def _parse_line(text: str, line_no: int) -> CronSchedule:
     fields = _split_fields(text)
+
+    if fields and fields[0][0].startswith("@"):
+        return _parse_macro(fields, text, line_no)
 
     if len(fields) < 5:
         last_end = fields[-1][1] + len(fields[-1][0]) if fields else 0
